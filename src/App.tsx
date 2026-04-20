@@ -65,10 +65,7 @@ type DuplicateMatchType = 'email' | 'phone' | 'email_phone'
 type DeleteParticipantResult = 'deleted' | 'invalid_password' | 'not_found' | 'busy'
 type SendBadgeContext = 'registration' | 'duplicate' | 'admin'
 type CheckInSearchMode = 'ticket' | 'contact'
-type CommitteeCredentialDispatchResult = {
-  sentCount: number
-  failedUsers: CommitteeUser[]
-}
+
 type CommitteePasswordRegenerationResult = {
   updatedCount: number
   failedUsers: CommitteeUser[]
@@ -247,7 +244,6 @@ const normalizeStoredCommitteeUser = (user: Partial<CommitteeUser>): CommitteeUs
   updatedAt: user.updatedAt ?? user.createdAt ?? new Date(0).toISOString(),
   lastLoginAt: user.lastLoginAt ?? null,
   passwordHash: user.passwordHash,
-  passwordPlaintext: user.passwordPlaintext ?? null,
 })
 
 const normalizeStoredCommitteeMember = (member: Partial<CommitteeMember>): CommitteeMember => ({
@@ -2537,7 +2533,6 @@ function App() {
         updatedAt: nowIso,
         lastLoginAt: null,
         passwordHash,
-        passwordPlaintext: generatedPassword,
       },
       ...currentCommitteeUsers,
     ])
@@ -2592,8 +2587,6 @@ function App() {
           updatedAt: new Date().toISOString(),
           passwordHash:
             payload.password?.trim() ? await hashText(payload.password.trim()) : user.passwordHash,
-          passwordPlaintext:
-            payload.password?.trim() ? payload.password.trim() : user.passwordPlaintext ?? null,
         }
       }),
     )
@@ -3151,9 +3144,9 @@ function App() {
     return { sentCount, failedMembers }
   }
 
-  const handleSendCommitteeCredentials = async (
+  const handleRegenerateCommitteePasswords = async (
     userIds: string[],
-  ): Promise<CommitteeCredentialDispatchResult> => {
+  ): Promise<CommitteePasswordRegenerationResult> => {
     const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)))
     const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID?.trim()
     const templateId = import.meta.env.VITE_EMAILJS_COMMITTEE_TEMPLATE_ID?.trim()
@@ -3185,50 +3178,6 @@ function App() {
     }
 
     const failedUsers: CommitteeUser[] = []
-    let sentCount = 0
-
-    for (const user of targetUsers) {
-      const currentPassword = user.passwordPlaintext?.trim() ?? ''
-
-      try {
-        if (!currentPassword) {
-          failedUsers.push(user)
-          continue
-        }
-
-        await sendCommitteeCredentialsEmail(user, currentPassword)
-        sentCount += 1
-      } catch (error) {
-        console.error(`Envoi des identifiants impossible pour ${user.email} :`, error)
-        failedUsers.push(user)
-      }
-    }
-
-    return {
-      sentCount,
-      failedUsers,
-    }
-  }
-
-  const handleRegenerateCommitteePasswords = async (
-    userIds: string[],
-  ): Promise<CommitteePasswordRegenerationResult> => {
-    const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)))
-
-    if (uniqueUserIds.length === 0) {
-      throw new Error('Sélectionnez au moins un utilisateur comité.')
-    }
-
-    const currentCommitteeUsers = committeeUsersRef.current
-    const targetUsers = uniqueUserIds
-      .map((userId) => currentCommitteeUsers.find((user) => user.id === userId))
-      .filter((user): user is CommitteeUser => Boolean(user))
-
-    if (targetUsers.length === 0) {
-      throw new Error('Aucun utilisateur comité correspondant dans la sélection.')
-    }
-
-    const failedUsers: CommitteeUser[] = []
     let updatedCount = 0
 
     for (const user of targetUsers) {
@@ -3241,6 +3190,7 @@ function App() {
           email: user.email,
           password: generatedPassword,
         })
+        await sendCommitteeCredentialsEmail(user, generatedPassword)
         updatedCount += 1
       } catch (error) {
         console.error(`Régénération du mot de passe impossible pour ${user.email} :`, error)
@@ -3375,7 +3325,7 @@ function App() {
             onUpdateCommitteeUser={handleUpdateCommitteeUser}
             onDeleteCommitteeUser={handleDeleteCommitteeUser}
             onSetCommitteeUserAccess={handleSetCommitteeUserAccess}
-            onSendCommitteeCredentials={handleSendCommitteeCredentials}
+
             onRegenerateCommitteePasswords={handleRegenerateCommitteePasswords}
             onCreateCommitteeMember={handleCreateCommitteeMember}
             onImportCommitteeCsv={handleImportCommitteeMembersFromCsv}
@@ -3429,7 +3379,6 @@ function App() {
             onUpdateCommitteeUser={handleUpdateCommitteeUser}
             onDeleteCommitteeUser={handleDeleteCommitteeUser}
             onSetCommitteeUserAccess={handleSetCommitteeUserAccess}
-            onSendCommitteeCredentials={handleSendCommitteeCredentials}
             onRegenerateCommitteePasswords={handleRegenerateCommitteePasswords}
             onCreateCommitteeMember={handleCreateCommitteeMember}
             onImportCommitteeCsv={handleImportCommitteeMembersFromCsv}

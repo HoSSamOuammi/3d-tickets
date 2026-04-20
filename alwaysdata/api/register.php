@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/_bootstrap.php';
 
+check_rate_limit('register', get_client_ip(), 10, 3600);
+
 $payload = read_json_body();
 
 if (is_registration_closed()) {
@@ -17,6 +19,13 @@ $lastName = trim((string) ($payload['lastName'] ?? ''));
 $email = trim((string) ($payload['email'] ?? ''));
 $phone = trim((string) ($payload['phone'] ?? ''));
 $type = ($payload['type'] ?? 'internal') === 'external' ? 'external' : 'internal';
+
+if (strlen($firstName) > 100 || strlen($lastName) > 100 || strlen($email) > 255 || strlen($phone) > 50) {
+    respond([
+        'ok' => false,
+        'message' => 'Les données saisies sont trop longues.',
+    ], 422);
+}
 
 if ($firstName === '' || $lastName === '' || $email === '' || $phone === '') {
     respond([

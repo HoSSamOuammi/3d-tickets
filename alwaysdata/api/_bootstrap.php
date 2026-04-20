@@ -1,6 +1,12 @@
 <?php
 declare(strict_types=1);
 
+session_set_cookie_params([
+    'lifetime' => 86400,
+    'secure' => true,
+    'httponly' => true,
+    'samesite' => 'Strict',
+]);
 session_start();
 
 if (is_file(__DIR__ . '/_config.php')) {
@@ -48,6 +54,10 @@ if (!defined('CHECK_IN_LOGIN_PASSWORD_HASH')) {
 }
 
 header('Content-Type: application/json; charset=UTF-8');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: DENY');
+header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+header("Content-Security-Policy: default-src 'none';");
 
 function respond(array $payload, int $status = 200): void
 {
@@ -67,6 +77,37 @@ function read_json_body(): array
     $data = json_decode($rawBody, true);
 
     return is_array($data) ? $data : [];
+}
+
+function get_client_ip(): string
+{
+    $ip = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    if (strpos($ip, ',') !== false) {
+        $ip = explode(',', $ip)[0];
+    }
+    return trim($ip);
+}
+
+function check_rate_limit(string $action, string $identifier, int $maxAttempts, int $lockWindowSeconds): void
+{
+    $connection = database();
+    
+    // Clean up old entries
+    $statement = $connection->prepare("DELETE FROM rate_limits WHERE created_at < datetime('now', '-' || :seconds || ' seconds')");
+    $statement->execute([':seconds' => (string)$lockWindowSeconds]);
+    
+    // Count recent attempts
+    $statement = $connection->prepare('SELECT COUNT(*) FROM rate_limits WHERE action = :action AND identifier = :identifier');
+    $statement->execute([':action' => $action, ':identifier' => $identifier]);
+    $attempts = (int) $statement->fetchColumn();
+    
+    if ($attempts >= $maxAttempts) {
+        respond(['ok' => false, 'message' => 'Trop de tentatives. Veuillez réessayer plus tard.'], 429);
+    }
+    
+    // Record new attempt
+    $statement = $connection->prepare('INSERT INTO rate_limits (action, identifier, created_at) VALUES (:action, :identifier, datetime("now"))');
+    $statement->execute([':action' => $action, ':identifier' => $identifier]);
 }
 
 function ensure_storage_directory(): void
@@ -229,6 +270,20 @@ function database(): PDO
          ON professors (secondary_email_normalized)'
     );
 
+    $connection->exec(
+        'CREATE TABLE IF NOT EXISTS rate_limits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            identifier TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )'
+    );
+
+    $connection->exec(
+        'CREATE INDEX IF NOT EXISTS idx_rate_limits_action_identifier
+         ON rate_limits (action, identifier)'
+    );
+
     $statement = $connection->prepare(
         'INSERT INTO settings (key, value)
          VALUES (:key, :value)
@@ -323,20 +378,22 @@ function is_admin_access_attempt(array $fields): bool
 
 function verify_admin_delete_password(string $password): bool
 {
-    return hash_equals(ADMIN_DELETE_PASSWORD_HASH, hash('sha256', trim($password)));
+    return password_verify(trim($password), ADMIN_DELETE_PASSWORD_HASH);
 }
 
 function verify_admin_portal_credentials(string $username, string $password): bool
 {
-    $passwordHash = hash('sha256', $password);
-
-    return hash_equals(
+    $isUsernameCorrect = hash_equals(
         strtolower(trim(ADMIN_PORTAL_USERNAME)),
         strtolower(trim($username))
-    ) && (
-        hash_equals(ADMIN_PORTAL_PASSWORD_HASH, $passwordHash) ||
-        hash_equals(ADMIN_PORTAL_PASSWORD_HASH_ALTERNATE, $passwordHash)
     );
+
+    if (!$isUsernameCorrect) {
+        return false;
+    }
+
+    return password_verify($password, ADMIN_PORTAL_PASSWORD_HASH) ||
+           password_verify($password, ADMIN_PORTAL_PASSWORD_HASH_ALTERNATE);
 }
 
 function is_admin_authenticated(): bool
@@ -355,13 +412,16 @@ function verify_check_in_credentials(string $email, string $password): bool
         return false;
     }
 
-    return hash_equals(
+    $isEmailCorrect = hash_equals(
         strtolower(trim((string) CHECK_IN_LOGIN_EMAIL)),
         strtolower(trim($email))
-    ) && hash_equals(
-        (string) CHECK_IN_LOGIN_PASSWORD_HASH,
-        hash('sha256', $password)
     );
+
+    if (!$isEmailCorrect) {
+        return false;
+    }
+
+    return password_verify($password, (string) CHECK_IN_LOGIN_PASSWORD_HASH);
 }
 
 function is_check_in_authenticated(): bool

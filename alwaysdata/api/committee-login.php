@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/_bootstrap.php';
 
+check_rate_limit('committee_login', get_client_ip(), 15, 900);
+
 $payload = read_json_body();
 $email = trim((string) ($payload['email'] ?? ''));
 $password = (string) ($payload['password'] ?? '');
@@ -22,6 +24,7 @@ if (filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
 }
 
 if (verify_check_in_credentials($email, $password)) {
+    session_regenerate_id(true);
     $_SESSION['check_in_authenticated'] = true;
     $_SESSION['check_in_user_id'] = '__fallback_checkin__';
 
@@ -41,6 +44,7 @@ if ($committeeUser === null) {
     ]);
 }
 
+session_regenerate_id(true);
 $_SESSION['check_in_authenticated'] = true;
 $_SESSION['check_in_user_id'] = $committeeUser['id'];
 

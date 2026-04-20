@@ -23,7 +23,6 @@ export interface CommitteeUser {
   updatedAt: string
   lastLoginAt: string | null
   passwordHash?: string
-  passwordPlaintext?: string | null
 }
 
 export type CommitteeBadgeType = 'committee' | 'ensatpress'

@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 require __DIR__ . '/_bootstrap.php';
 
+check_rate_limit('admin_login', get_client_ip(), 15, 900);
+
 $payload = read_json_body();
 
 $username = trim((string) ($payload['username'] ?? ''));
@@ -17,6 +19,7 @@ if ($isPortalLoginAttempt) {
         ]);
     }
 
+    session_regenerate_id(true);
     $_SESSION['admin_authenticated'] = true;
     $_SESSION['check_in_authenticated'] = true;
 
@@ -40,6 +43,7 @@ if (!is_admin_access_attempt($payload)) {
     ]);
 }
 
+session_regenerate_id(true);
 $_SESSION['admin_authenticated'] = true;
 
 respond([

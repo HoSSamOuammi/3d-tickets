@@ -77,10 +77,6 @@ interface AdminPanelProps {
   }) => Promise<void>
   onDeleteCommitteeUser: (userId: string) => Promise<void>
   onSetCommitteeUserAccess: (userId: string, isActive: boolean) => Promise<void>
-  onSendCommitteeCredentials: (userIds: string[]) => Promise<{
-    sentCount: number
-    failedUsers: CommitteeUser[]
-  }>
   onRegenerateCommitteePasswords: (userIds: string[]) => Promise<{
     updatedCount: number
     failedUsers: CommitteeUser[]
@@ -184,7 +180,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateCommitteeUser,
   onDeleteCommitteeUser,
   onSetCommitteeUserAccess,
-  onSendCommitteeCredentials,
   onRegenerateCommitteePasswords,
   onCreateCommitteeMember,
   onImportCommitteeCsv,
@@ -910,7 +905,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   }
 
   const runCommitteeSelectionAction = async (
-    action: 'authorize' | 'revoke' | 'delete' | 'send_credentials' | 'regenerate_password',
+    action: 'authorize' | 'revoke' | 'delete' | 'regenerate_password',
     explicitUserIds?: string[],
   ) => {
     const targetUserIds =
@@ -932,30 +927,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsCommitteeBatchActionRunning(true)
 
     try {
-      if (action === 'send_credentials') {
-        const result = await onSendCommitteeCredentials(targetUsers.map((user) => user.id))
-
-        if (result.sentCount > 0 && result.failedUsers.length === 0) {
-          onNotify(
-            result.sentCount === 1
-              ? "Les identifiants d'accès ont été envoyés."
-              : `${result.sentCount} emails d'identifiants ont été envoyés.`,
-            'success',
-          )
-        } else if (result.sentCount > 0) {
-          onNotify(
-            `${result.sentCount} emails envoyés, ${result.failedUsers.length} utilisateurs restent à traiter. Pour les anciens comptes sans mot de passe réutilisable, régénérez d'abord le mot de passe puis renvoyez les identifiants.`,
-            'warning',
-          )
-        } else {
-          onNotify(
-            "Aucun email d'identifiants n'a pu être envoyé. Vérifiez le template EmailJS comité puis réessayez.",
-            'error',
-          )
-        }
-
-        return
-      }
 
       if (action === 'regenerate_password') {
         const result = await onRegenerateCommitteePasswords(targetUsers.map((user) => user.id))
@@ -1459,17 +1430,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   type="button"
                   className="btn btn-primary"
                   disabled={selectedCommitteeUsers.length === 0 || isCommitteeBatchActionRunning}
-                  onClick={() => void runCommitteeSelectionAction('send_credentials')}
-                >
-                  <MailCheck size={16} /> Envoyer les identifiants
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  disabled={selectedCommitteeUsers.length === 0 || isCommitteeBatchActionRunning}
                   onClick={() => void runCommitteeSelectionAction('regenerate_password')}
                 >
-                  <Pencil size={16} /> Régénérer le mot de passe
+                  <Pencil size={16} /> Régénérer et envoyer
                 </button>
                 <button
                   type="button"

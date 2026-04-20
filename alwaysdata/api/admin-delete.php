@@ -5,6 +5,8 @@ require __DIR__ . '/_bootstrap.php';
 
 require_admin();
 
+check_rate_limit('admin_delete', get_client_ip(), 15, 900);
+
 $payload = read_json_body();
 $participantId = trim((string) ($payload['participantId'] ?? ''));
 $password = (string) ($payload['password'] ?? '');
