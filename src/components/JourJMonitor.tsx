@@ -7,14 +7,10 @@ import {
   LOCAL_JOURJ_ADJUSTMENT_STORAGE_KEY,
   readStoredJourJAdjustment,
 } from '../lib/jourj'
-import { remoteAdjustJourJ, remoteFetchJourJSnapshot } from '../lib/remoteApi'
 import type { CommitteeMember, JourJSnapshot, Participant } from '../types'
 import type { PopupTone } from './InAppPopup'
 
-type DataMode = 'checking' | 'local' | 'remote'
-
 interface JourJMonitorProps {
-  dataMode: DataMode
   registrants: Participant[]
   committeeMembers: CommitteeMember[]
   maxInsideCapacity: number | null
@@ -40,7 +36,6 @@ const formatSnapshotTime = (value: string) => {
 }
 
 const JourJMonitor = ({
-  dataMode,
   registrants,
   committeeMembers,
   maxInsideCapacity,
@@ -60,14 +55,9 @@ const JourJMonitor = ({
   )
   const [snapshot, setSnapshot] = useState<JourJSnapshot>(localSnapshot)
   const [deltaInput, setDeltaInput] = useState('')
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false)
 
   useEffect(() => {
-    if (dataMode !== 'local') {
-      return
-    }
-
     const refreshLocalSnapshot = () => {
       setSnapshot(buildBrowserJourJSnapshot(maxInsideCapacity))
     }
@@ -87,58 +77,11 @@ const JourJMonitor = ({
       window.removeEventListener('storage', handleStorage)
       window.clearInterval(intervalId)
     }
-  }, [dataMode, maxInsideCapacity])
+  }, [maxInsideCapacity])
 
   useEffect(() => {
-    if (dataMode !== 'remote') {
-      return
-    }
-
-    let isDisposed = false
-
-    const refreshSnapshot = async (showLoader = false) => {
-      if (showLoader && !isDisposed) {
-        setIsRefreshing(true)
-      }
-
-      try {
-        const nextSnapshot = await remoteFetchJourJSnapshot()
-
-        if (!isDisposed) {
-          setSnapshot(nextSnapshot)
-        }
-      } catch (error) {
-        if (!isDisposed) {
-          console.error('Synchronisation Jour J impossible :', error)
-        }
-      } finally {
-        if (showLoader && !isDisposed) {
-          setIsRefreshing(false)
-        }
-      }
-    }
-
-    void refreshSnapshot(true)
-
-    const intervalId = window.setInterval(() => {
-      void refreshSnapshot()
-    }, POLL_INTERVAL_MS)
-
-    return () => {
-      isDisposed = true
-      window.clearInterval(intervalId)
-    }
-  }, [dataMode])
-
-  useEffect(() => {
-    if (dataMode === 'checking') {
-      return
-    }
-
-    if (dataMode === 'local') {
-      setSnapshot(buildBrowserJourJSnapshot(maxInsideCapacity))
-    }
-  }, [dataMode, localSnapshot, maxInsideCapacity])
+    setSnapshot(buildBrowserJourJSnapshot(maxInsideCapacity))
+  }, [localSnapshot, maxInsideCapacity])
 
   const handleApplyAdjustment = async () => {
     const trimmedDelta = deltaInput.trim()
@@ -164,17 +107,12 @@ const JourJMonitor = ({
     setIsSubmittingAdjustment(true)
 
     try {
-      if (dataMode === 'remote') {
-        const nextSnapshot = await remoteAdjustJourJ(parsedDelta)
-        setSnapshot(nextSnapshot)
-      } else {
-        const nextManualAdjustment = readStoredJourJAdjustment() + parsedDelta
-        window.localStorage.setItem(
-          LOCAL_JOURJ_ADJUSTMENT_STORAGE_KEY,
-          String(nextManualAdjustment),
-        )
-        setSnapshot(buildBrowserJourJSnapshot(maxInsideCapacity))
-      }
+      const nextManualAdjustment = readStoredJourJAdjustment() + parsedDelta
+      window.localStorage.setItem(
+        LOCAL_JOURJ_ADJUSTMENT_STORAGE_KEY,
+        String(nextManualAdjustment),
+      )
+      setSnapshot(buildBrowserJourJSnapshot(maxInsideCapacity))
 
       setDeltaInput('')
       onNotify('Ajustement Jour J enregistre.', 'success')
@@ -194,19 +132,6 @@ const JourJMonitor = ({
     void handleApplyAdjustment()
   }
 
-  if (dataMode === 'checking') {
-    return (
-      <div className={`jourj-shell ${isPublic ? 'is-public' : 'is-admin'}`}>
-        <div className="jourj-card glass">
-          <div className="jourj-loading">
-            <Loader2 className="animate-spin" size={28} />
-            <span>Chargement des donnees...</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className={`jourj-shell ${isPublic ? 'is-public' : 'is-admin'}`}>
       <section className={`jourj-card glass ${isPublic ? 'is-public' : 'is-admin'}`}>
@@ -220,16 +145,7 @@ const JourJMonitor = ({
           </div>
 
           <div className="jourj-live-status" aria-live="polite">
-            {isRefreshing ? (
-              <>
-                <Loader2 className="animate-spin" size={16} />
-                Synchronisation...
-              </>
-            ) : dataMode === 'remote' ? (
-              <>Synchronisation en temps reel</>
-            ) : (
-              <>Suivi actif</>
-            )}
+            <>Suivi actif</>
           </div>
         </div>
 

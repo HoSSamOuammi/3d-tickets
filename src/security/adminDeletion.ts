@@ -1,6 +1,5 @@
 const ADMIN_DELETE_PASSWORD_HASH =
-  import.meta.env.VITE_LOCAL_ADMIN_DELETE_PASSWORD_HASH?.trim() ||
-  'a6dea4e4fbac230762a39d5fafa56f2f9f01942bce6f7f950f37c0afac40f7e2'
+  import.meta.env.VITE_LOCAL_ADMIN_DELETE_PASSWORD_HASH?.trim() ?? ''
 
 const encoder = new TextEncoder()
 
@@ -22,6 +21,10 @@ const timingSafeEqual = (left: string, right: string) => {
 }
 
 export async function verifyAdminDeletionPassword(password: string) {
+  if (!ADMIN_DELETE_PASSWORD_HASH) {
+    return false
+  }
+
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(password.trim()))
   return timingSafeEqual(toHex(digest), ADMIN_DELETE_PASSWORD_HASH)
 }

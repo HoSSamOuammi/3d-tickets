@@ -12,37 +12,6 @@ import {
   readStoredJourJAdjustment,
   readStoredMaxInsideCapacity,
 } from './lib/jourj'
-import {
-  probeRemoteApi,
-  remoteAdminLogin,
-  remoteAdminLogout,
-  remoteAdminPresenceLookup,
-  remoteAdminPortalLogin,
-  remoteCreateCommitteeMember,
-  remoteCommitteeLogin,
-  remoteCommitteeLogout,
-  remoteCheckInSearch,
-  remoteCreateProfessor,
-  remoteDeleteCommitteeMember,
-  remoteDeleteProfessor,
-  remoteSetCommitteeMemberPresence,
-  remoteSetParticipantPresence,
-  remoteCreateCommitteeUser,
-  remoteDeleteCommitteeUser,
-  remoteFetchProfessors,
-  remoteFetchCommitteeUsers,
-  remoteFetchCommitteeMembers,
-  remoteImportCommitteeMembers,
-  remoteImportProfessors,
-  remoteConfirmParticipant,
-  remoteDeleteParticipant,
-  remoteRegisterParticipant,
-  remoteSaveMaxInsideCapacity,
-  remoteSetCommitteeUserAccess,
-  remoteUpdateParticipant,
-  remoteUpdateCommitteeUser,
-  remoteSaveExternalTicketPrice,
-} from './lib/remoteApi'
 import { isAdminAccessAttempt } from './security/adminAccess'
 import { verifyAdminDeletionPassword } from './security/adminDeletion'
 import { reserveDeviceEmailSend, type DeviceEmailAllowance } from './security/deviceRateLimit'
@@ -56,7 +25,6 @@ import type {
   RegistrationPayload,
 } from './types'
 
-type ApiMode = 'checking' | 'local' | 'remote'
 type Page = 'home' | 'success' | 'admin'
 type RouteMode = 'main' | 'check_in' | 'jour_j'
 type SuccessMode = 'created' | 'duplicate' | 'updated'
@@ -144,8 +112,6 @@ const CHECK_IN_ADMIN_PASSWORDS = Array.from(
     [
       import.meta.env.VITE_LOCAL_CHECKIN_ADMIN_PASSWORD?.trim(),
       import.meta.env.VITE_ADMIN_PASSWORD?.trim(),
-      'Enacuts.admin@%@2026',
-      'Enactus.admin@%@2026',
     ].filter((value): value is string => Boolean(value)),
   ),
 )
@@ -537,7 +503,6 @@ const getRouteMode = (): RouteMode => {
 
 function App() {
   const [routeMode, setRouteMode] = useState<RouteMode>(getRouteMode)
-  const [apiMode, setApiMode] = useState<ApiMode>('checking')
   const [currentPage, setCurrentPage] = useState<Page>('home')
   const [currentUser, setCurrentUser] = useState<Participant | null>(null)
   const [registrants, setRegistrants] = useState<Participant[]>(readStoredParticipants)
@@ -592,64 +557,36 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     registrantsRef.current = registrants
     writeRegistrantsCache(registrants)
-  }, [apiMode, registrants])
+  }, [registrants])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     writeExternalTicketPriceCache(externalTicketPrice)
-  }, [apiMode, externalTicketPrice])
+  }, [externalTicketPrice])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     writeMaxInsideCapacityCache(maxInsideCapacity)
-  }, [apiMode, maxInsideCapacity])
+  }, [maxInsideCapacity])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     writeRegistrationClosedCache(isRegistrationClosed)
-  }, [apiMode, isRegistrationClosed])
+  }, [isRegistrationClosed])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     committeeUsersRef.current = committeeUsers
     writeCommitteeUsersCache(committeeUsers)
-  }, [apiMode, committeeUsers])
+  }, [committeeUsers])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     committeeMembersRef.current = committeeMembers
     writeCommitteeMembersCache(committeeMembers)
-  }, [apiMode, committeeMembers])
+  }, [committeeMembers])
 
   useEffect(() => {
-    if (apiMode === 'remote') {
-      return
-    }
-
     professorsRef.current = professors
     writeProfessorsCache(professors)
-  }, [apiMode, professors])
+  }, [professors])
 
   const showPopup = (message: string, tone: PopupTone = 'info') => {
     const id = Date.now() + Math.floor(Math.random() * 1000)
@@ -660,7 +597,7 @@ function App() {
     setPopups((current) => current.filter((item) => item.id !== id))
   }
 
-  const getRemoteErrorMessage = (error: unknown, fallbackMessage: string) => {
+  const getErrorMessage = (error: unknown, fallbackMessage: string) => {
     if (error && typeof error === 'object') {
       const maybeError = error as { payload?: { message?: string }; message?: string }
       return maybeError.payload?.message ?? maybeError.message ?? fallbackMessage
@@ -669,94 +606,7 @@ function App() {
     return fallbackMessage
   }
 
-  const applyRemoteBootstrapState = (
-    remoteState: Awaited<ReturnType<typeof probeRemoteApi>>,
-    options?: { openAdminPage?: boolean },
-  ) => {
-    if (!remoteState) {
-      return
-    }
-
-    setApiMode('remote')
-    setExternalTicketPrice(remoteState.externalTicketPrice)
-    setIsRegistrationClosed(remoteState.isRegistrationClosed)
-    setMaxInsideCapacity(remoteState.maxInsideCapacity)
-    setIsAdminAuthenticated(remoteState.adminAuthenticated)
-    setIsCheckInAuthenticated(remoteState.checkInAuthenticated)
-    registrantsRef.current = remoteState.adminAuthenticated ? remoteState.registrants : []
-    committeeUsersRef.current = remoteState.adminAuthenticated ? remoteState.committeeUsers : []
-    committeeMembersRef.current = remoteState.adminAuthenticated ? remoteState.committeeMembers : []
-    professorsRef.current = remoteState.adminAuthenticated ? remoteState.professors : []
-    setRegistrants(remoteState.adminAuthenticated ? remoteState.registrants : [])
-    setCommitteeUsers(remoteState.adminAuthenticated ? remoteState.committeeUsers : [])
-    setCommitteeMembers(remoteState.adminAuthenticated ? remoteState.committeeMembers : [])
-    setProfessors(remoteState.adminAuthenticated ? remoteState.professors : [])
-    writeExternalTicketPriceCache(remoteState.externalTicketPrice)
-    writeRegistrationClosedCache(remoteState.isRegistrationClosed)
-    writeMaxInsideCapacityCache(remoteState.maxInsideCapacity)
-
-    if (remoteState.adminAuthenticated) {
-      writeRegistrantsCache(remoteState.registrants)
-      writeCommitteeUsersCache(remoteState.committeeUsers)
-      writeCommitteeMembersCache(remoteState.committeeMembers)
-      writeProfessorsCache(remoteState.professors)
-
-      if (options?.openAdminPage) {
-        setCurrentPage('admin')
-      }
-    }
-  }
-
   useEffect(() => {
-    let isCancelled = false
-
-    const bootstrapRemoteState = async () => {
-      const remoteState = await probeRemoteApi()
-
-      if (isCancelled) {
-        return
-      }
-
-      if (!remoteState) {
-        setApiMode('local')
-        return
-      }
-
-      applyRemoteBootstrapState(remoteState, { openAdminPage: routeMode !== 'jour_j' })
-    }
-
-    void bootstrapRemoteState()
-
-    return () => {
-      isCancelled = true
-    }
-  }, [routeMode])
-
-  useEffect(() => {
-    if (apiMode !== 'remote' || !isAdminAuthenticated) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      void probeRemoteApi().then((remoteState) => {
-        if (!remoteState) {
-          return
-        }
-
-        applyRemoteBootstrapState(remoteState)
-      })
-    }, 10000)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [apiMode, isAdminAuthenticated])
-
-  useEffect(() => {
-    if (apiMode !== 'local') {
-      return
-    }
-
     const handleStorage = (event: StorageEvent) => {
       const isParticipantEvent =
         !event.key || event.key === STORAGE_KEY || event.key === LEGACY_STORAGE_KEY
@@ -817,7 +667,7 @@ function App() {
     return () => {
       window.removeEventListener('storage', handleStorage)
     }
-  }, [apiMode])
+  }, [])
 
   useEffect(() => {
     if (currentPage === 'success' && !currentUser) {
@@ -1413,50 +1263,6 @@ function App() {
       const isAdminCredentials = await isAdminAccessAttempt(normalizedParticipant)
 
       if (isAdminCredentials) {
-        if (apiMode === 'remote') {
-          try {
-            const adminLoginResponse = await remoteAdminLogin(normalizedParticipant)
-
-            if (adminLoginResponse.authenticated) {
-              setApiMode('remote')
-              setIsAdminAuthenticated(true)
-              setCurrentUser(null)
-              commitRegistrants(adminLoginResponse.registrants ?? [])
-              commitCommitteeUsers(adminLoginResponse.committeeUsers ?? [])
-              commitCommitteeMembers(adminLoginResponse.committeeMembers ?? [])
-              commitProfessors(adminLoginResponse.professors ?? [])
-              setExternalTicketPrice(
-                adminLoginResponse.externalTicketPrice ?? DEFAULT_EXTERNAL_TICKET_PRICE,
-              )
-              setMaxInsideCapacity(adminLoginResponse.maxInsideCapacity ?? null)
-              setIsRegistrationClosed(adminLoginResponse.isRegistrationClosed ?? false)
-              writeExternalTicketPriceCache(
-                adminLoginResponse.externalTicketPrice ?? DEFAULT_EXTERNAL_TICKET_PRICE,
-              )
-              writeMaxInsideCapacityCache(adminLoginResponse.maxInsideCapacity ?? null)
-              writeRegistrationClosedCache(adminLoginResponse.isRegistrationClosed ?? false)
-              setIsCheckInAuthenticated(false)
-              setCurrentPage('admin')
-              return
-            }
-          } catch (error) {
-            console.error('Connexion admin distante impossible:', error)
-            showPopup(
-              getRemoteErrorMessage(
-                error,
-                "Les identifiants admin sont corrects, mais l'API admin du serveur ne répond pas correctement.",
-              ),
-              'error',
-            )
-            return
-          }
-
-          showPopup(
-            "Les identifiants admin sont reconnus, mais la connexion admin distante a échoué.",
-            'error',
-          )
-          return
-        }
 
         setIsAdminAuthenticated(true)
         setIsCheckInAuthenticated(false)
@@ -1488,44 +1294,6 @@ function App() {
         return
       }
 
-      if (apiMode === 'remote') {
-        const remoteResponse = isEditingInfo && currentUser
-          ? await remoteUpdateParticipant(currentUser.id, normalizedParticipant)
-          : await remoteRegisterParticipant(normalizedParticipant)
-
-        setExternalTicketPrice(remoteResponse.externalTicketPrice)
-        writeExternalTicketPriceCache(remoteResponse.externalTicketPrice)
-
-        if (remoteResponse.mode === 'duplicate') {
-          setCurrentUser(remoteResponse.participant)
-          setSuccessMode('duplicate')
-          setBadgeEmailStatus('idle')
-          setDuplicateMatchType(remoteResponse.duplicateMatchType)
-          setCurrentPage('success')
-          return
-        }
-
-        let emailStatus: BadgeEmailStatus = 'idle'
-        emailStatus = await sendBadgeEmail(remoteResponse.participant, {
-          context: 'registration',
-        })
-
-        if (emailStatus === 'rate_limited') {
-          return
-        }
-
-        setCurrentUser(remoteResponse.participant)
-        if (isEditingInfo) {
-          setSuccessMode('updated')
-          setIsEditingInfo(false)
-        } else {
-          setSuccessMode('created')
-        }
-        setBadgeEmailStatus(emailStatus)
-        setDuplicateMatchType('email')
-        setCurrentPage('success')
-        return
-      }
 
       const currentRegistrants = registrantsRef.current
       const currentCommitteeMembers = committeeMembersRef.current
@@ -1629,7 +1397,7 @@ function App() {
     } catch (error) {
       console.error("Erreur critique d'inscription :", error)
       showPopup(
-        getRemoteErrorMessage(error, 'Une erreur technique est survenue. Veuillez réessayer.'),
+        getErrorMessage(error, 'Une erreur technique est survenue. Veuillez réessayer.'),
         'error',
       )
     } finally {
@@ -1638,10 +1406,6 @@ function App() {
   }
 
   const handleCheckInLogin = async (credentials: CheckInCredentials) => {
-    if (apiMode === 'checking') {
-      showPopup("Initialisation de l'application en cours. Reessayez dans un instant.", 'info')
-      return false
-    }
 
     setIsCheckInLoggingIn(true)
 
@@ -1649,88 +1413,6 @@ function App() {
       const normalizedUsername = credentials.username.trim()
       const normalizedLowerUsername = normalizedUsername.toLowerCase()
 
-      if (apiMode === 'remote') {
-        try {
-          if (normalizedLowerUsername === CHECK_IN_ADMIN_USERNAME) {
-            const adminLoginResponse = await remoteAdminPortalLogin({
-              username: normalizedUsername,
-              password: credentials.password,
-            })
-
-            if (!adminLoginResponse.authenticated) {
-              showPopup('Connexion admin impossible avec ces identifiants.', 'error')
-              return false
-            }
-
-            setIsAdminAuthenticated(true)
-            setIsCheckInAuthenticated(true)
-            if (adminLoginResponse.registrants) {
-              commitRegistrants(adminLoginResponse.registrants)
-            }
-            if (adminLoginResponse.committeeUsers) {
-              commitCommitteeUsers(adminLoginResponse.committeeUsers)
-            } else {
-              const usersResponse = await remoteFetchCommitteeUsers()
-              commitCommitteeUsers(usersResponse.committeeUsers)
-            }
-            if (adminLoginResponse.committeeMembers) {
-              commitCommitteeMembers(adminLoginResponse.committeeMembers)
-            } else {
-              const membersResponse = await remoteFetchCommitteeMembers()
-              commitCommitteeMembers(membersResponse.committeeMembers)
-            }
-            if (adminLoginResponse.professors) {
-              commitProfessors(adminLoginResponse.professors)
-            } else {
-              const professorsResponse = await remoteFetchProfessors()
-              commitProfessors(professorsResponse.professors)
-            }
-            if (typeof adminLoginResponse.externalTicketPrice === 'number') {
-              setExternalTicketPrice(adminLoginResponse.externalTicketPrice)
-              writeExternalTicketPriceCache(adminLoginResponse.externalTicketPrice)
-            }
-            if (
-              typeof adminLoginResponse.maxInsideCapacity === 'number' ||
-              adminLoginResponse.maxInsideCapacity === null
-            ) {
-              setMaxInsideCapacity(adminLoginResponse.maxInsideCapacity ?? null)
-              writeMaxInsideCapacityCache(adminLoginResponse.maxInsideCapacity ?? null)
-            }
-            if (typeof adminLoginResponse.isRegistrationClosed === 'boolean') {
-              setIsRegistrationClosed(adminLoginResponse.isRegistrationClosed)
-              writeRegistrationClosedCache(adminLoginResponse.isRegistrationClosed)
-            }
-            setCurrentPage('admin')
-            showPopup('Connexion admin check-in ouverte.', 'success')
-            return true
-          }
-
-          const committeeLoginResponse = await remoteCommitteeLogin({
-            email: normalizedUsername,
-            password: credentials.password,
-          })
-
-          if (!committeeLoginResponse.authenticated) {
-            showPopup('Connexion comité impossible avec ces identifiants.', 'error')
-            return false
-          }
-
-          setIsAdminAuthenticated(false)
-          setIsCheckInAuthenticated(true)
-          showPopup('Connexion check-in ouverte.', 'success')
-          return true
-        } catch (error) {
-          console.error('Connexion check-in distante impossible:', error)
-          showPopup(
-            getRemoteErrorMessage(
-              error,
-              "Impossible d'ouvrir la session check-in pour le moment.",
-            ),
-            'error',
-          )
-          return false
-        }
-      }
 
       if (normalizedLowerUsername === CHECK_IN_ADMIN_USERNAME) {
         if (!isValidCheckInAdminPassword(credentials.password)) {
@@ -1788,37 +1470,6 @@ function App() {
   const handleCheckInSearch = async (mode: CheckInSearchMode, query: string) => {
     const trimmedQuery = query.trim()
 
-    if (apiMode === 'remote') {
-      try {
-        const result = await remoteCheckInSearch(mode, trimmedQuery)
-
-        if (result.participant) {
-          commitRegistrants(
-            registrantsRef.current.map((participant) =>
-              participant.id === result.participant?.id ? result.participant : participant,
-            ),
-          )
-        }
-
-        return result
-      } catch (error) {
-        console.error('Recherche check-in distante impossible:', error)
-        const message = getRemoteErrorMessage(
-          error,
-          "Impossible d'effectuer cette verification pour le moment.",
-        )
-
-        if (
-          message.toLowerCase().includes('accès admin requis') ||
-          message.toLowerCase().includes('accès check-in requis')
-        ) {
-          setIsAdminAuthenticated(false)
-          setIsCheckInAuthenticated(false)
-        }
-
-        throw new Error(message)
-      }
-    }
 
     const participants = registrantsRef.current
 
@@ -1877,37 +1528,6 @@ function App() {
       return { found: false }
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteAdminPresenceLookup(mode, trimmedQuery)
-      commitRegistrants(response.registrants)
-      commitCommitteeMembers(response.committeeMembers)
-
-      if (!response.found) {
-        return { found: false }
-      }
-
-      if (response.entityType === 'committee_member' && response.committeeMember) {
-        return {
-          found: true,
-          entityType: 'committee_member',
-          committeeMember: response.committeeMember,
-          presenceRecorded: response.presenceRecorded,
-          alreadyPresent: response.alreadyPresent,
-        }
-      }
-
-      if (response.entityType === 'participant' && response.participant) {
-        return {
-          found: true,
-          entityType: 'participant',
-          participant: response.participant,
-          presenceRecorded: response.presenceRecorded,
-          alreadyPresent: response.alreadyPresent,
-        }
-      }
-
-      return { found: false }
-    }
 
     const currentCommitteeMembers = committeeMembersRef.current
     const currentRegistrants = registrantsRef.current
@@ -2174,29 +1794,6 @@ function App() {
     )
 
     try {
-      if (apiMode === 'remote') {
-        const response = await remoteConfirmParticipant(participantId)
-        commitRegistrants(response.registrants)
-        setCurrentUser((previousUser) =>
-          previousUser?.id === participantId ? response.participant : previousUser,
-        )
-
-        const emailStatus = await sendBadgeEmail(response.participant, {
-          context: 'admin',
-          bypassRateLimit: true,
-        })
-
-        if (emailStatus === 'sent') {
-          showPopup("Participant externe confirmé. L'email de confirmation a été envoyé.", 'success')
-        } else {
-          showPopup(
-            "Participant confirmé, mais l'email de confirmation n'a pas pu être envoyé automatiquement. Vous pourrez le renvoyer plus tard.",
-            'warning',
-          )
-        }
-
-        return
-      }
 
       commitRegistrants(
         currentRegistrants.map((item) => (item.id === participantId ? confirmedParticipant : item)),
@@ -2218,7 +1815,7 @@ function App() {
     } catch (error) {
       console.error('Confirmation externe impossible :', error)
       showPopup(
-        getRemoteErrorMessage(error, "Impossible de confirmer ce participant pour le moment."),
+        getErrorMessage(error, "Impossible de confirmer ce participant pour le moment."),
         'error',
       )
     } finally {
@@ -2343,34 +1940,6 @@ function App() {
       return 'busy'
     }
 
-    if (apiMode === 'remote') {
-      try {
-        const response = await remoteDeleteParticipant(participantId, password)
-
-        if (!response.ok) {
-          return response.result
-        }
-
-        commitRegistrants(response.registrants)
-        confirmingParticipantIdsRef.current.delete(participantId)
-        setConfirmingParticipantIds((previousIds) =>
-          previousIds.filter((id) => id !== participantId),
-        )
-        sendingBadgeParticipantIdsRef.current.delete(participantId)
-        setSendingBadgeParticipantIds((previousIds) =>
-          previousIds.filter((id) => id !== participantId),
-        )
-        showPopup("L'inscription a été supprimée.", 'success')
-        return 'deleted'
-      } catch (error) {
-        console.error('Suppression distante impossible :', error)
-        showPopup(
-          getRemoteErrorMessage(error, "Impossible de supprimer cette inscription pour le moment."),
-          'error',
-        )
-        return 'not_found'
-      }
-    }
 
     const hasValidPassword = await verifyAdminDeletionPassword(password)
 
@@ -2404,79 +1973,16 @@ function App() {
   }
 
   const handleExternalTicketPriceChange = async (price: number) => {
-    if (apiMode === 'remote') {
-      try {
-        const response = await remoteSaveExternalTicketPrice(price)
-        setExternalTicketPrice(response.externalTicketPrice)
-        setIsRegistrationClosed(response.isRegistrationClosed)
-        setMaxInsideCapacity(response.maxInsideCapacity)
-        writeExternalTicketPriceCache(response.externalTicketPrice)
-        writeRegistrationClosedCache(response.isRegistrationClosed)
-        writeMaxInsideCapacityCache(response.maxInsideCapacity)
-      } catch (error) {
-        console.error('Mise à jour du prix impossible :', error)
-        showPopup(
-          getRemoteErrorMessage(error, 'Impossible de mettre à jour le prix externe.'),
-          'error',
-        )
-        throw error
-      }
-      return
-    }
 
     setExternalTicketPrice(price)
   }
 
   const handleRegistrationClosureChange = async (closed: boolean) => {
-    if (apiMode === 'remote') {
-      try {
-        const response = await remoteSaveExternalTicketPrice(externalTicketPrice, closed)
-        setExternalTicketPrice(response.externalTicketPrice)
-        setIsRegistrationClosed(response.isRegistrationClosed)
-        setMaxInsideCapacity(response.maxInsideCapacity)
-        writeExternalTicketPriceCache(response.externalTicketPrice)
-        writeRegistrationClosedCache(response.isRegistrationClosed)
-        writeMaxInsideCapacityCache(response.maxInsideCapacity)
-      } catch (error) {
-        console.error("Mise à jour de l'état de fermeture impossible :", error)
-        showPopup(
-          getRemoteErrorMessage(
-            error,
-            "Impossible de mettre à jour l'état d'ouverture de l'application.",
-          ),
-          'error',
-        )
-        throw error
-      }
-      return
-    }
 
     setIsRegistrationClosed(closed)
   }
 
   const handleMaxInsideCapacityChange = async (nextCapacity: number | null) => {
-    if (apiMode === 'remote') {
-      try {
-        const response = await remoteSaveMaxInsideCapacity(nextCapacity)
-        setExternalTicketPrice(response.externalTicketPrice)
-        setIsRegistrationClosed(response.isRegistrationClosed)
-        setMaxInsideCapacity(response.maxInsideCapacity)
-        writeExternalTicketPriceCache(response.externalTicketPrice)
-        writeRegistrationClosedCache(response.isRegistrationClosed)
-        writeMaxInsideCapacityCache(response.maxInsideCapacity)
-      } catch (error) {
-        console.error('Mise à jour de la capacité maximale impossible :', error)
-        showPopup(
-          getRemoteErrorMessage(
-            error,
-            'Impossible de mettre à jour la capacité maximale de la salle.',
-          ),
-          'error',
-        )
-        throw error
-      }
-      return
-    }
 
     setMaxInsideCapacity(nextCapacity)
   }
@@ -2505,22 +2011,6 @@ function App() {
       )
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteCreateCommitteeUser({
-        name: payload.name.trim(),
-        email: normalizedEmail,
-        password: generatedPassword,
-      })
-      commitCommitteeUsers(response.committeeUsers)
-      
-      const createdUser = response.committeeUsers.find((u) => u.email === normalizedEmail)
-      if (createdUser) {
-        await sendCommitteeCredentialsEmail(createdUser, generatedPassword).catch((err) => {
-          console.error('Email de création comité échoué:', err)
-        })
-      }
-      return
-    }
 
     const currentCommitteeUsers = committeeUsersRef.current
 
@@ -2563,16 +2053,6 @@ function App() {
       throw new Error('Veuillez saisir une adresse email valide.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteUpdateCommitteeUser({
-        userId: payload.userId,
-        name: payload.name.trim(),
-        email: normalizedEmail,
-        password: payload.password?.trim() ? payload.password : undefined,
-      })
-      commitCommitteeUsers(response.committeeUsers)
-      return
-    }
 
     const currentCommitteeUsers = committeeUsersRef.current
     const emailOwner = currentCommitteeUsers.find(
@@ -2608,11 +2088,6 @@ function App() {
       throw new Error('Utilisateur comité introuvable.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteSetCommitteeUserAccess({ userId, isActive })
-      commitCommitteeUsers(response.committeeUsers)
-      return
-    }
 
     const currentCommitteeUsers = committeeUsersRef.current
     const targetUser = currentCommitteeUsers.find((user) => user.id === userId)
@@ -2633,11 +2108,6 @@ function App() {
       throw new Error('Utilisateur comité introuvable.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteDeleteCommitteeUser(userId)
-      commitCommitteeUsers(response.committeeUsers)
-      return
-    }
 
     const currentCommitteeUsers = committeeUsersRef.current
 
@@ -2664,17 +2134,6 @@ function App() {
       throw new Error('Veuillez saisir une adresse email valide.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteCreateCommitteeMember({
-        firstName,
-        lastName,
-        email,
-        phone,
-        badgeType,
-      })
-      commitCommitteeMembers(response.committeeMembers)
-      return
-    }
 
     const currentCommitteeMembers = committeeMembersRef.current
 
@@ -2746,14 +2205,6 @@ function App() {
       throw new Error('Aucune ligne valide à importer dans le fichier comité.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteImportCommitteeMembers(sanitizedMembers)
-      commitCommitteeMembers(response.committeeMembers)
-      return {
-        importedCount: response.importedCount ?? 0,
-        skippedCount: response.skippedCount ?? 0,
-      }
-    }
 
     const currentCommitteeMembers = committeeMembersRef.current
     const currentRegistrants = registrantsRef.current
@@ -2853,14 +2304,6 @@ function App() {
       throw new Error('Aucune ligne valide à importer dans le fichier professeurs.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteImportProfessors(sanitizedProfessors)
-      commitProfessors(response.professors)
-      return {
-        importedCount: response.importedCount ?? 0,
-        skippedCount: response.skippedCount ?? 0,
-      }
-    }
 
     const currentProfessors = professorsRef.current
     const knownEmails = new Set(
@@ -2922,15 +2365,6 @@ function App() {
     const normalizedSecondaryEmail =
       secondaryEmail && secondaryEmail !== primaryEmail ? secondaryEmail : ''
 
-    if (apiMode === 'remote') {
-      const response = await remoteCreateProfessor({
-        name,
-        primaryEmail,
-        secondaryEmail: normalizedSecondaryEmail || null,
-      })
-      commitProfessors(response.professors)
-      return
-    }
 
     const currentProfessors = professorsRef.current
     const knownEmails = new Set(
@@ -2963,11 +2397,6 @@ function App() {
       throw new Error('Professeur introuvable.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteDeleteProfessor(professorId)
-      commitProfessors(response.professors)
-      return
-    }
 
     const currentProfessors = professorsRef.current
 
@@ -3020,11 +2449,6 @@ function App() {
       throw new Error('Membre comité introuvable.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteDeleteCommitteeMember(memberId)
-      commitCommitteeMembers(response.committeeMembers)
-      return
-    }
 
     const currentCommitteeMembers = committeeMembersRef.current
 
@@ -3040,11 +2464,6 @@ function App() {
       throw new Error('Membre comité introuvable.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteSetCommitteeMemberPresence(memberId, present)
-      commitCommitteeMembers(response.committeeMembers)
-      return
-    }
 
     const currentCommitteeMembers = committeeMembersRef.current
     const targetMember = currentCommitteeMembers.find((member) => member.id === memberId)
@@ -3082,11 +2501,6 @@ function App() {
       throw new Error('Participant introuvable.')
     }
 
-    if (apiMode === 'remote') {
-      const response = await remoteSetParticipantPresence(participantId, present)
-      commitRegistrants(response.registrants)
-      return
-    }
 
     const currentRegistrants = registrantsRef.current
     const targetParticipant = currentRegistrants.find((participant) => participant.id === participantId)
@@ -3214,17 +2628,6 @@ function App() {
   }
 
   const logoutAdmin = () => {
-    if (apiMode === 'remote') {
-      void remoteAdminLogout()
-      registrantsRef.current = []
-      committeeUsersRef.current = []
-      committeeMembersRef.current = []
-      professorsRef.current = []
-      setRegistrants([])
-      setCommitteeUsers([])
-      setCommitteeMembers([])
-      setProfessors([])
-    }
 
     setIsAdminAuthenticated(false)
     setIsCheckInAuthenticated(false)
@@ -3233,21 +2636,6 @@ function App() {
   }
 
   const logoutCheckIn = () => {
-    if (apiMode === 'remote') {
-      if (isAdminAuthenticated) {
-        void remoteAdminLogout()
-      } else if (isCheckInAuthenticated) {
-        void remoteCommitteeLogout()
-      }
-      registrantsRef.current = []
-      committeeUsersRef.current = []
-      committeeMembersRef.current = []
-      professorsRef.current = []
-      setRegistrants([])
-      setCommitteeUsers([])
-      setCommitteeMembers([])
-      setProfessors([])
-    }
 
     setIsAdminAuthenticated(false)
     setIsCheckInAuthenticated(false)
@@ -3300,7 +2688,6 @@ function App() {
         <Suspense fallback={deferredViewFallback}>
           {isJourJRoute ? (
           <JourJMonitor
-            dataMode={apiMode}
             registrants={registrants}
             committeeMembers={committeeMembers}
             maxInsideCapacity={maxInsideCapacity}
@@ -3311,7 +2698,6 @@ function App() {
         ) : isCheckInAdminView ? (
           <AdminPanel
             key="checkin-admin"
-            dataMode={apiMode}
             registrants={registrants}
             committeeUsers={committeeUsers}
             committeeMembers={committeeMembers}
@@ -3365,7 +2751,6 @@ function App() {
         ) : isAdminView ? (
           <AdminPanel
             key="admin"
-            dataMode={apiMode}
             registrants={registrants}
             committeeUsers={committeeUsers}
             committeeMembers={committeeMembers}

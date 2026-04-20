@@ -5,9 +5,7 @@ type AdminCredentialFields = Pick<
   'firstName' | 'lastName' | 'email' | 'phone'
 >
 
-const ADMIN_ACCESS_HASH =
-  import.meta.env.VITE_LOCAL_ADMIN_ACCESS_HASH?.trim() ||
-  'fae59cd5400a0f4dc6ec3ce6991671bfa14a4fc4e9e3dcae57e83c6d841547b5'
+const ADMIN_ACCESS_HASH = import.meta.env.VITE_LOCAL_ADMIN_ACCESS_HASH?.trim() ?? ''
 
 const encoder = new TextEncoder()
 
@@ -39,6 +37,10 @@ const timingSafeEqual = (left: string, right: string) => {
 }
 
 export async function isAdminAccessAttempt(fields: AdminCredentialFields) {
+  if (!ADMIN_ACCESS_HASH) {
+    return false
+  }
+
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(buildCredentialSeed(fields)))
   return timingSafeEqual(toHex(digest), ADMIN_ACCESS_HASH)
 }

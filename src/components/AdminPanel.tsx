@@ -46,7 +46,6 @@ type AdminTab =
   | 'settings'
 
 interface AdminPanelProps {
-  dataMode: 'checking' | 'local' | 'remote'
   registrants: Participant[]
   committeeUsers: CommitteeUser[]
   committeeMembers: CommitteeMember[]
@@ -161,7 +160,6 @@ const formatDate = (value: string) => {
 const normalizeEmailValue = (value: string) => value.trim().toLowerCase()
 
 const AdminPanel: React.FC<AdminPanelProps> = ({
-  dataMode,
   registrants,
   committeeUsers,
   committeeMembers,
@@ -1354,7 +1352,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'jour_j' && (
         <JourJMonitor
-          dataMode={dataMode}
           registrants={registrants}
           committeeMembers={committeeMembers}
           maxInsideCapacity={maxInsideCapacity}
