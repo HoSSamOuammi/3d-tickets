@@ -178,6 +178,7 @@ function database(): PDO
     );
 
     ensure_sqlite_column($connection, 'committee_users', 'password_plaintext', 'TEXT NULL');
+    $connection->exec('UPDATE committee_users SET password_plaintext = NULL WHERE password_plaintext IS NOT NULL');
 
     $connection->exec(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_committee_users_email_normalized
@@ -407,7 +408,7 @@ function participant_from_row(array $row): array
     ];
 }
 
-function committee_user_from_row(array $row, bool $includePasswordPlaintext = false): array
+function committee_user_from_row(array $row): array
 {
     $user = [
         'id' => (string) $row['id'],
@@ -418,10 +419,6 @@ function committee_user_from_row(array $row, bool $includePasswordPlaintext = fa
         'updatedAt' => (string) $row['updated_at'],
         'lastLoginAt' => $row['last_login_at'] !== null ? (string) $row['last_login_at'] : null,
     ];
-
-    if ($includePasswordPlaintext) {
-        $user['passwordPlaintext'] = $row['password_plaintext'] !== null ? (string) $row['password_plaintext'] : null;
-    }
 
     return $user;
 }
@@ -490,7 +487,7 @@ function list_committee_users(): array
     $users = [];
 
     foreach ($statement->fetchAll() as $row) {
-        $users[] = committee_user_from_row($row, true);
+        $users[] = committee_user_from_row($row);
     }
 
     return $users;
@@ -1068,7 +1065,6 @@ function create_committee_user(array $payload): array
             email,
             email_normalized,
             password_hash,
-            password_plaintext,
             is_active,
             created_at,
             updated_at,
@@ -1079,7 +1075,6 @@ function create_committee_user(array $payload): array
             :email,
             :email_normalized,
             :password_hash,
-            :password_plaintext,
             :is_active,
             :created_at,
             :updated_at,
@@ -1093,7 +1088,6 @@ function create_committee_user(array $payload): array
         ':email' => $user['email'],
         ':email_normalized' => normalize_email($user['email']),
         ':password_hash' => password_hash($password, PASSWORD_BCRYPT),
-        ':password_plaintext' => $password,
         ':is_active' => $user['isActive'] ? 1 : 0,
         ':created_at' => $user['createdAt'],
         ':updated_at' => $user['updatedAt'],
@@ -1116,7 +1110,6 @@ function update_committee_user(string $userId, array $payload): ?array
     $password = (string) ($payload['password'] ?? '');
     $updatedAt = gmdate('c');
     $passwordHash = $password !== '' ? password_hash($password, PASSWORD_BCRYPT) : (string) $existingRow['password_hash'];
-    $passwordPlaintext = $password !== '' ? $password : ($existingRow['password_plaintext'] !== null ? (string) $existingRow['password_plaintext'] : null);
 
     $statement = database()->prepare(
         'UPDATE committee_users
@@ -1124,7 +1117,6 @@ function update_committee_user(string $userId, array $payload): ?array
              email = :email,
              email_normalized = :email_normalized,
              password_hash = :password_hash,
-             password_plaintext = :password_plaintext,
              updated_at = :updated_at
          WHERE id = :id'
     );
@@ -1134,7 +1126,6 @@ function update_committee_user(string $userId, array $payload): ?array
         ':email' => $email,
         ':email_normalized' => normalize_email($email),
         ':password_hash' => $passwordHash,
-        ':password_plaintext' => $passwordPlaintext,
         ':updated_at' => $updatedAt,
     ]);
 
