@@ -2512,6 +2512,13 @@ function App() {
         password: generatedPassword,
       })
       commitCommitteeUsers(response.committeeUsers)
+      
+      const createdUser = response.committeeUsers.find((u) => u.email === normalizedEmail)
+      if (createdUser) {
+        await sendCommitteeCredentialsEmail(createdUser, generatedPassword).catch((err) => {
+          console.error('Email de création comité échoué:', err)
+        })
+      }
       return
     }
 
@@ -2523,19 +2530,21 @@ function App() {
 
     const nowIso = new Date().toISOString()
     const passwordHash = await hashText(generatedPassword)
-    commitCommitteeUsers([
-      {
-        id: crypto.randomUUID(),
-        name: payload.name.trim(),
-        email: normalizedEmail,
-        isActive: true,
-        createdAt: nowIso,
-        updatedAt: nowIso,
-        lastLoginAt: null,
-        passwordHash,
-      },
-      ...currentCommitteeUsers,
-    ])
+    const newUser = {
+      id: crypto.randomUUID(),
+      name: payload.name.trim(),
+      email: normalizedEmail,
+      isActive: true,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+      lastLoginAt: null,
+      passwordHash,
+    }
+
+    commitCommitteeUsers([newUser, ...currentCommitteeUsers])
+    await sendCommitteeCredentialsEmail(newUser as CommitteeUser, generatedPassword).catch((err) => {
+      console.error('Email de création comité échoué en local:', err)
+    })
   }
 
   const handleUpdateCommitteeUser = async (payload: {

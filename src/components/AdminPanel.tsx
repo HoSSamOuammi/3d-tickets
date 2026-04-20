@@ -851,7 +851,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           email: selectedCommitteeMemberForAccount?.email ?? '',
         })
         onNotify(
-          'Utilisateur comité créé. Son mot de passe a été généré automatiquement et restera le même tant qu’il n’est pas régénéré par l’admin.',
+          'Utilisateur comité créé. Son mot de passe a été généré et envoyé par courriel.',
           'success',
         )
       }
